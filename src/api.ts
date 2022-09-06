@@ -4,6 +4,7 @@ interface IBaseResponse {
 
 interface ISuccessResponse<T> extends IBaseResponse {
   data: T;
+  headers?: Record<string, string>;
   status: "OK";
 }
 
@@ -131,6 +132,7 @@ export function request<Return, Error, Body>(
     }
   }
 
+  let responseHeaders: Record<string, string> = {};
   return Promise.race([
     fetch(url, params),
     // The promise below will never resolve
@@ -145,14 +147,18 @@ export function request<Return, Error, Body>(
     .then((res: unknown) => {
       // response will always be type 'Response'
       const response = res as Response;
+      response.headers.forEach((value, key) => responseHeaders[key] = value);
       statusCode = response.status;
-      // TODO: consider using actual response Accept headers to decide on json vs others
-      if (jsonResponse) {
-        return response.json();
-      } else {
-        return response.text();
+      switch(headers["Accept"]) {
+        case "application/octet-stream":
+          return response.blob();
+        case "application/json":
+          return response.json();
+        case "multipart/form-data":
+          return response.formData();
+        default: 
+          return response.text();
       }
-      // TODO: consider using response.formData() as well?
     })
     .then((data: Return | Error) => {
       // Allow expecting something other than 200s
@@ -166,6 +172,7 @@ export function request<Return, Error, Body>(
         const response: ISuccessResponse<Return> = {
           statusCode,
           data: data as Return,
+          headers: responseHeaders, 
           status: "OK",
         };
         return response;
